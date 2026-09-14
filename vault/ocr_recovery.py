@@ -201,6 +201,7 @@ def reconcile(result):
         result['fields'][field]=choice
         quality[field]={'trusted':trusted,'source':source}
     # Resolve full_name: display-only, not an approval field, but needs evidence.
+    display_warnings = []
     for field in ('full_name', 'nationality'):
         options = votes[field]
         try:
@@ -221,11 +222,11 @@ def reconcile(result):
             else:
                 # Tied: prefer existing if it's among the options, otherwise leave empty.
                 choice = existing if existing in options else ''
-                issues.append('Unresolved OCR disagreement: ' + field)
+                display_warnings.append('Unresolved OCR disagreement: ' + field)
                 source = 'conflicting OCR evidence'
         # Do NOT fall back to an old parser value with no evidence.
         if not choice:
-            issues.append('Missing or ambiguous OCR value: ' + field)
+            display_warnings.append('Missing or ambiguous OCR value: ' + field)
         result['fields'][field] = choice
         quality[field] = {'trusted': trusted, 'source': source}
     identities={p['passport_number'] for p in prefixes}
@@ -236,5 +237,5 @@ def reconcile(result):
     result['ocr_quality']={'version':1,'fields':quality,'review_required':bool(issues),'reasons':issues}
     # Keep original evidence/warnings for traceability, distinguish resolved display.
     result['warnings']=list(dict.fromkeys(result.get('warnings',[])+[
-        'Critical fields were re-resolved from OCR evidence; see ocr_quality.']+issues))
+        'Critical fields were re-resolved from OCR evidence; see ocr_quality.']+issues+display_warnings))
     return result
