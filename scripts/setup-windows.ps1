@@ -21,6 +21,7 @@ if ($wslList -notmatch '(?m)^\s*\*?\s*Ubuntu\s+\S+\s+2\s*$') {
 }
 $linuxPath = (& wsl.exe -d Ubuntu --exec wslpath -a $package).Trim()
 if ($LASTEXITCODE -ne 0 -or !$linuxPath) { throw 'Could not locate the extracted project folder.' }
+& wsl.exe -d Ubuntu -u root --exec bash -c "sed -i 's/\r$//' '$linuxPath'/scripts/*.sh 2>/dev/null || true"
 & wsl.exe -d Ubuntu -u root --exec bash "$linuxPath/scripts/install-linux.sh" "$linuxPath"
 if ($LASTEXITCODE -ne 0) { throw 'Setup stopped. Send a screenshot of the last messages; existing data has been preserved.' }
 $certPath = Join-Path $env:TEMP 'passportvault-root.crt'
