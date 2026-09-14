@@ -1,7 +1,7 @@
 import copy,json,os,sys,types,unittest
 from pathlib import Path
 from unittest.mock import patch
-ROOT=Path(os.environ.get('PV_TEST_ROOT',Path(__file__).resolve().parent.parent/'files'))
+ROOT=Path(os.environ.get('PV_TEST_ROOT',Path(__file__).resolve().parent.parent))
 pkg=types.ModuleType('tested_vault');pkg.__path__=[str(ROOT/'vault')];sys.modules['tested_vault']=pkg
 models=types.ModuleType('tested_vault.models');models.Workbook=object;sys.modules[models.__name__]=models
 crypto=types.ModuleType('tested_vault.crypto');crypto.unpack=lambda data,aad:data;sys.modules[crypto.__name__]=crypto
