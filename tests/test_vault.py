@@ -1,7 +1,29 @@
 import io, json, os, sys, time, zipfile
+import unittest, shutil
 from unittest.mock import patch
 from datetime import timedelta
 from PIL import Image, ImageFont
+
+def _tesseract_available():
+    if shutil.which('tesseract'):
+        return True
+    try:
+        import pytesseract
+        cmd = getattr(getattr(pytesseract, 'pytesseract', None), 'tesseract_cmd', 'tesseract')
+        if shutil.which(cmd):
+            return True
+        for candidate in [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        ]:
+            if os.path.isfile(candidate):
+                pytesseract.pytesseract.tesseract_cmd = candidate
+                return True
+    except Exception:
+        pass
+    return False
+
+_has_tesseract = _tesseract_available()
 
 def _mono_font(size):
     """Return a monospace TrueType font, trying common OS locations."""
@@ -158,6 +180,7 @@ class VaultTests(TestCase):
   call_command('worker',once=True);d.refresh_from_db();self.assertEqual(d.status,'failed')
 
 class OCRSmoke(SimpleTestCase):
+ @unittest.skipUnless(_has_tesseract, "Tesseract OCR binary not found in PATH (runs in Docker)")
  def test_actual_tesseract_on_synthetic_document(self):
   from PIL import ImageDraw
   image=Image.new('RGB',(1800,1200),'white');draw=ImageDraw.Draw(image)
@@ -172,6 +195,7 @@ class WorkflowTests(TestCase):
  setUp = VaultTests.setUp
  post = VaultTests.post
  # End-to-end API workflow with real local OCR and isolated child processes.
+ @unittest.skipUnless(_has_tesseract, "Tesseract OCR binary not found in PATH (runs in Docker)")
  def test_upload_worker_review_compare_export(self):
   from PIL import ImageDraw
   image=Image.new('RGB',(1600,1000),'white');draw=ImageDraw.Draw(image);font=_mono_font(36)
