@@ -1,0 +1,17 @@
+{
+    admin off
+    auto_https disable_redirects
+}
+https://localhost:8443 {
+    tls internal
+    request_body {
+        max_size 30MB
+    }
+    reverse_proxy https://web:8000 {
+        transport http {
+            tls_trust_pool file /etc/caddy/backend.crt
+        }
+        header_up X-Forwarded-Proto https
+        header_up Host localhost:8443
+    }
+}

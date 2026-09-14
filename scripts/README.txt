@@ -1,0 +1,1 @@
+Windows launchers execute only the readable PowerShell source shipped in this folder. They do not change machine execution policies. Review the source before running. If your organization blocks scripts or WSL, do not bypass those controls: use an approved machine or ask its administrator.

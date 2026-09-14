@@ -1,0 +1,75 @@
+name: passportvault
+x-app: &app
+  image: passportvault:local
+  restart: unless-stopped
+  user: "0:0"
+  cap_add: [SETUID, SETGID, KILL]
+  environment:
+    SECRETS_DIR: /run/vault-secrets
+  volumes:
+    - ./secrets:/run/vault-secrets:ro
+  networks: [private]
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 128
+  depends_on:
+    db:
+      condition: service_healthy
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: vaultadmin
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./secrets/admin:/run/secrets/admin:ro
+      - ./db-init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./db-tls/internal.crt:/run/db-tls/internal.crt:ro
+      - ./db-tls/internal.key:/run/db-tls/internal.key:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: [postgres, -c, ssl=on, -c, ssl_cert_file=/run/db-tls/internal.crt, -c, ssl_key_file=/run/db-tls/internal.key, -c, hba_file=/etc/postgresql/pg_hba.conf]
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U vaultadmin -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 768m
+  web:
+    <<: *app
+    build: .
+    mem_limit: 1536m
+  worker:
+    <<: *app
+    command: [python, manage.py, worker]
+    mem_limit: 2048m
+  maintenance:
+    <<: *app
+    command: [sh, -c, 'while true; do python manage.py maintenance; sleep 3600; done']
+    mem_limit: 256m
+  gateway:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports: ['127.0.0.1:8443:8443']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./db-tls/internal.crt:/etc/caddy/backend.crt:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [private, edge]
+    depends_on: [web]
+    mem_limit: 128m
+networks:
+  private:
+    internal: true
+  edge: {}
+volumes:
+  postgres_data: {}
+  caddy_data: {}
+  caddy_config: {}

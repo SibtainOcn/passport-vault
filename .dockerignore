@@ -1,0 +1,12 @@
+secrets
+backups
+.git
+**/__pycache__
+*.sqlite3
+frontend/node_modules
+.sites-runtime
+
+db-init/
+db-tls/
+
+Backups/

@@ -1,0 +1,137 @@
+[
+  {
+    "case": "large_printed_and_mrz",
+    "seconds": 77.0,
+    "engine": "Enhanced EasyOCR + Tesseract + MRZ",
+    "checks": {
+      "passport": true,
+      "dob": false,
+      "expiry": true,
+      "composite": false,
+      "optional": false
+    },
+    "fields": {
+      "passport_number": {
+        "expected": "Z1234567",
+        "actual": "Z1234567",
+        "match": true
+      },
+      "full_name": {
+        "expected": "TEST PERSON",
+        "actual": "TEST PERSON CCEECECCEECEEC",
+        "match": false
+      },
+      "dob": {
+        "expected": "2000-04-03",
+        "actual": "03-04-2000",
+        "match": true
+      },
+      "gender": {
+        "expected": "M",
+        "actual": "M",
+        "match": true
+      },
+      "nationality": {
+        "expected": "IND",
+        "actual": "IND",
+        "match": true
+      },
+      "date_of_issue": {
+        "expected": "2020-06-05",
+        "actual": "05-06-2020",
+        "match": true
+      },
+      "date_of_expiry": {
+        "expected": "2030-06-04",
+        "actual": "2030-06-04",
+        "match": true
+      }
+    },
+    "warnings": [
+      "passport_number was read by Tesseract only.",
+      "full_name was read by Tesseract only.",
+      "dob was read by Tesseract only.",
+      "gender was read by Tesseract only.",
+      "nationality was read by Tesseract only.",
+      "date_of_issue was read by Tesseract only.",
+      "date_of_expiry was read by Tesseract only.",
+      "Printed text/MRZ conflict: full_name",
+      "Printed text/MRZ conflict: nationality",
+      "Printed text/MRZ conflict: date_of_expiry",
+      "MRZ names may be transliterated/truncated; verify printed name.",
+      "MRZ uses two-digit years. Verify full dates on the passport.",
+      "MRZ check digits failed. Verify against original.",
+      "Automatic extraction is provisional; critical disagreements should be reviewed before final approval."
+    ],
+    "all_seven_match": false,
+    "evidence": [
+      {
+        "tesseract_text": "SYNTHETIC TEST ONLY - NOT A TRAVEL DOCUMENT\nPassport Number: Z1234567\nFull Name: TEST PERSON\nDate of Birth: 03/04/2000\nSex: M\nNationality: INDIAN\nDate of Issue: 05/06/2020\nDate of Expiry: 04/06/2030\nP<IND<<TEST<PERSON<<<<<<<cceceeeeeeeeeeeecce\nZ1234567<1INDO0004031M300604 7<<<<<<<<<<<<<<Q2\nP<IND<<TEST<PERSON<<<<<<<ecceccececccccccccccd\nZ1234567<11IND0004031M300604 /<\u00ab<<<<<<<ccccc<<0?\nP<IND<<TEST<PERSON<<<<<<<<<<cceececceeceec<<\nZ1234567<1INDO004031M300604 7 <<<<<<<<<<<<<<Q2\nP<IND<<TEST<PERSON<<<<<<<cccccccedcccedcccce\n71234567<11IND0004031M300604 /<<<<<ccccccce<<9?",
+        "easyocr_text": "SYNTHETIC\nTEST\nONLY\nNOT\nTRAVEL\nDOCUMENT\nPassport\nNumber:\n21234567\nFull\nName\nTEST PERSON\nDate\nBirth:\n03/04/2000\nSex:\nM\nNationality:\nINDIAN\n0f\nIssue:\n05/06/2020\nExpiry:\n04/06/2030\nP<IND<<TEST<PERSON<\n21234567<1IND000403103006047<<\n<02\nNumber=\nName =\nPERSON\n21234567<1IND0004031M3006047<",
+        "mrz_text": "P<IND<<TEST<PERSON<<<<<<<\nZ1234567<11IND0004031M3006047<<<<<<<<<<<02\n71256711400004021N2G06047<\n71234567<11IND0004031M3006047<<<<<<<<97\n7124567<11N00004921N2G06047<\nP<IND<<TEST<PERSON<<<<<<<<<<\nZ1234567<11IND0004031M3006047<<<<<<<<<<<<<<02\n1271N0909492392G06047<"
+      }
+    ]
+  },
+  {
+    "case": "small_compressed_printed_and_mrz",
+    "seconds": 57.34,
+    "engine": "Enhanced EasyOCR + Tesseract + MRZ",
+    "checks": {},
+    "fields": {
+      "passport_number": {
+        "expected": "B2345678",
+        "actual": "82345678",
+        "match": false
+      },
+      "full_name": {
+        "expected": "SAMPLE USER",
+        "actual": "SAMPLE USER",
+        "match": true
+      },
+      "dob": {
+        "expected": "2000-04-03",
+        "actual": "03-04-2000",
+        "match": true
+      },
+      "gender": {
+        "expected": "M",
+        "actual": "M",
+        "match": true
+      },
+      "nationality": {
+        "expected": "IND",
+        "actual": "INDIAN",
+        "match": true
+      },
+      "date_of_issue": {
+        "expected": "2020-06-05",
+        "actual": "",
+        "match": false
+      },
+      "date_of_expiry": {
+        "expected": "2030-06-04",
+        "actual": "04-06-2030",
+        "match": true
+      }
+    },
+    "warnings": [
+      "passport_number was read by Tesseract only.",
+      "full_name was read by Tesseract only.",
+      "gender was read by Tesseract only.",
+      "nationality was read by Tesseract only.",
+      "dob recovered from repeated OCR/MRZ evidence.",
+      "date_of_expiry recovered from repeated OCR/MRZ evidence.",
+      "Low-resolution source detected; enhanced OCR preprocessing was applied.",
+      "Multiple MRZ identities found. Split into separate passport records before approval.",
+      "Automatic extraction is provisional; critical disagreements should be reviewed before final approval."
+    ],
+    "all_seven_match": false,
+    "evidence": [
+      {
+        "tesseract_text": "SYNTHETIC TEST ONLY - NOT A TRAVEL DOCUMENT\nPassport Number: 82345678\nFul Name: SAMPLE USER\nOate of Birth: 03/64/2660\nSex: M\nNationality: INDIAN\nOate of Issue: 05/06/2026\nOate of Expiry: 04/06/2030\nP<IND<<SAMPLE<USER<<ccceccececeececceccccccd\nB2345678<8IND0004031M300604 7 <<<<cc<<cc<<<<08\nSYNTHETIC TEST ONLY - NOT A TRAVEL DOCUNENT\nFull Name: SAMPLE USER\nOate of Birth: 63/64/2606\nOate of Issue: 05/66/2026\nP<IND<<SAMPLE<USER<<ccceecceececeeccceecccece\nB2345678<8IND0004031M300604 7<<ccccccccec<<O8\n\u2018SYNTHETIC TEST ONLY - HOT A TRAVEL OOCUNENT\nPassport huaber:..82345678.\nFull Home: SAMPLE \u2018USER\nOate of \u2018Birth: 03/64/2600:\nSex:\nWationality: INDIAN\n\u2018Date of Kssvez 05/66/2026\nOate of Expiry: 64/06/2030\nPcIND<<SAMPLECUSER<cececcccececcecececececdd\n82345678<BIND6004031M3006047<cceccecccecceO8\nSYNTHETIC TEST ONLY - HOT A TRAVEL DOCUMENT\nFutl, Hane: SAHPLE \u2018USER\nSex: N\nHationality: INOIAN\nGate of Issue: 05/06/2020\nOaste of Expiry: 64/66/2030\nP<IND<<SAMPLE<USER<caceqcccecececcecececcccc\nB2345678<81ND0004031M300604 7<ceccececccc<<O8",
+        "easyocr_text": "SYNTHETIC Test\nOwly\nNOT\nTRAVEL\nDocuXENT\nPassport_nurber\n82345678\nFul ( Nare:\nSanpLe User\nDate\nB1rfh:\n03/04/2000\nSex:\nHatxonal ty:\nINDIAN\nIssue:\n05/06/2020\not Explry:\n04/06/2030\nP<IND<<SAMPLE<USER<<<<<<<<<<<<<<<<<<<44<44<<\nB2345678<8INDO004031M3006047<<<<<<<<<<<<<<08\nSYMIHETIG' Test Sxiy\nFoT\nTRAVEL; OottEnT\nS3p1\nNuib\n82345678_\nFul\nHero\nSsapie :UsER'\nBEoth=\n03/04/2080:\nGkonoltty:\nINOIA\nIsiue=\n05/06/2070\nExplry; 04/05/2030\nP<INDKKSAMPLEKUSERaqe\nB2345678<8IN0000403103006047<<",
+        "mrz_text": "P<IND<<SAMPLE<USER<<\nB2345678<8IND0004031M3006047<<<<<O8\nSETASBSS\nPIND<<SAMPLECUSERK<\nB2345678<8IND0004031M3006047<<<08\nP<IND<<SAMPLE<USER<<<<\nB2345678<8IND0004031M3006047<<<<<<<<<<<08\nSH"
+      }
+    ]
+  }
+]

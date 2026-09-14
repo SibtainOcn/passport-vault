@@ -1,0 +1,46 @@
+# Python & Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Sensitive credentials & keys
+secrets/
+db-init/
+db-tls/
+*.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Backups & Databases
+
+
+# Frontend & Dependencies
+frontend/node_modules/
+node_modules/
+.sites-runtime/
+
+# IDE & Editor artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
