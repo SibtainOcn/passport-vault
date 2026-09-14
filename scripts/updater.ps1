@@ -1,47 +1,47 @@
 $ErrorActionPreference = 'Stop'
 $Host.UI.RawUI.WindowTitle = 'PassportVault Updater'
 
-# ── Resolve project root (one level up from scripts/) ────────────────────────
+# -- Resolve project root (one level up from scripts/) ------------------------
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ProjectRoot = Split-Path -Parent $ScriptDir
 
 Write-Host ''
 Write-Host '================================================================================'
-Write-Host '  PASSPORTVAULT UPDATER — Test, Sync, Rebuild, Deploy'
+Write-Host '  PASSPORTVAULT UPDATER -- Test, Sync, Rebuild, Deploy'
 Write-Host '================================================================================'
 Write-Host "  Project : $ProjectRoot"
 Write-Host "  Time    : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Host '================================================================================'
 Write-Host ''
 
-# ── Helper: run a command and stop if it fails ────────────────────────────────
+# -- Helper: run a command and stop if it fails --------------------------------
 function Invoke-Step {
     param(
         [string]$StepName,
         [scriptblock]$Command
     )
     Write-Host ''
-    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    Write-Host '--------------------------------------------------------------------------------'
     Write-Host "  STEP: $StepName"
-    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    Write-Host '--------------------------------------------------------------------------------'
     Write-Host ''
 
     & $Command
 
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         Write-Host ''
-        Write-Host "  ██ FAILED: $StepName (exit code $LASTEXITCODE)" -ForegroundColor Red
-        Write-Host "  ██ Stopping updater. Fix the issue above and re-run." -ForegroundColor Red
+        Write-Host "  [FAILED] $StepName (exit code $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host '  Stopping updater. Fix the issue above and re-run.' -ForegroundColor Red
         Write-Host ''
         exit $LASTEXITCODE
     }
     Write-Host ''
-    Write-Host "  ✓ $StepName — PASSED" -ForegroundColor Green
+    Write-Host "  [OK] $StepName -- PASSED" -ForegroundColor Green
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  STEP 1: Run unit tests locally (using venv Python)
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 Invoke-Step 'Run Unit Tests (local)' {
     $venvPython = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
     if (-not (Test-Path $venvPython)) {
@@ -51,26 +51,69 @@ Invoke-Step 'Run Unit Tests (local)' {
     & $venvPython (Join-Path $ProjectRoot 'run_tests.py')
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 2: Verify WSL Ubuntu is running
-# ══════════════════════════════════════════════════════════════════════════════
-Invoke-Step 'Check WSL Ubuntu availability' {
+# ==============================================================================
+#  STEP 2: Ensure WSL Ubuntu is running (auto-start if stopped)
+# ==============================================================================
+Invoke-Step 'Ensure WSL Ubuntu is running' {
     $ErrorActionPreference = 'Continue'
     & wsl.exe -d Ubuntu --exec true 2>$null
     $wslOk = ($LASTEXITCODE -eq 0)
     $ErrorActionPreference = 'Stop'
+
     if (-not $wslOk) {
-        Write-Host '  ERROR: WSL Ubuntu is not available. Start it first.' -ForegroundColor Red
+        Write-Host '  WSL Ubuntu is not running. Attempting to start...' -ForegroundColor Yellow
+
+        # Try starting the distro
+        $ErrorActionPreference = 'Continue'
+        & wsl.exe -d Ubuntu -- echo 'WSL started' 2>$null
+        $startOk = ($LASTEXITCODE -eq 0)
+        $ErrorActionPreference = 'Stop'
+
+        if (-not $startOk) {
+            Write-Host '  WSL still not responding. Trying wsl --shutdown and restart...' -ForegroundColor Yellow
+            & wsl.exe --shutdown 2>$null
+            Start-Sleep -Seconds 3
+            $ErrorActionPreference = 'Continue'
+            & wsl.exe -d Ubuntu -- echo 'WSL restarted' 2>$null
+            $restartOk = ($LASTEXITCODE -eq 0)
+            $ErrorActionPreference = 'Stop'
+
+            if (-not $restartOk) {
+                Write-Host '  ERROR: Cannot start WSL Ubuntu. Is it installed?' -ForegroundColor Red
+                Write-Host '  Run: wsl --install -d Ubuntu' -ForegroundColor Red
+                $global:LASTEXITCODE = 1
+                return
+            }
+        }
+        Write-Host '  WSL Ubuntu started successfully.'
+    } else {
+        Write-Host '  WSL Ubuntu is already running.'
+    }
+
+    # Make sure Docker is running inside WSL
+    Write-Host '  Ensuring Docker service is running inside WSL...'
+    & wsl.exe -d Ubuntu -u root -- bash -lc 'service docker start 2>/dev/null || true'
+    Start-Sleep -Seconds 2
+
+    # Verify Docker is responsive
+    $ErrorActionPreference = 'Continue'
+    & wsl.exe -d Ubuntu -u root -- bash -lc 'docker info > /dev/null 2>&1'
+    $dockerOk = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = 'Stop'
+
+    if (-not $dockerOk) {
+        Write-Host '  ERROR: Docker is not responding inside WSL.' -ForegroundColor Red
+        Write-Host '  Try: wsl -d Ubuntu -u root -- service docker start' -ForegroundColor Red
         $global:LASTEXITCODE = 1
         return
     }
-    Write-Host '  WSL Ubuntu is running.'
+    Write-Host '  Docker is running inside WSL.'
     $global:LASTEXITCODE = 0
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  STEP 3: Copy / sync project files into WSL (/opt/passportvault)
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
     # Convert Windows path to WSL path
     $wslSourcePath = (& wsl.exe -d Ubuntu --exec wslpath -a $ProjectRoot).Trim()
@@ -99,9 +142,9 @@ Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
     "
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 4: Fix line endings inside WSL (CRLF → LF)
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  STEP 4: Fix line endings inside WSL (CRLF -> LF)
+# ==============================================================================
 Invoke-Step 'Fix CRLF line endings in WSL' {
     & wsl.exe -d Ubuntu -u root -- bash -lc "
         cd /opt/passportvault && \
@@ -111,9 +154,9 @@ Invoke-Step 'Fix CRLF line endings in WSL' {
     "
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  STEP 5: Rebuild Docker containers
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 Invoke-Step 'Rebuild Docker containers (docker compose build)' {
     & wsl.exe -d Ubuntu -u root -- bash -lc "
         cd /opt/passportvault && \
@@ -121,9 +164,9 @@ Invoke-Step 'Rebuild Docker containers (docker compose build)' {
     "
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 6: Deploy — restart containers with new images
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  STEP 6: Deploy -- restart containers with new images
+# ==============================================================================
 Invoke-Step 'Deploy new containers (docker compose up -d)' {
     & wsl.exe -d Ubuntu -u root -- bash -lc "
         cd /opt/passportvault && \
@@ -131,9 +174,9 @@ Invoke-Step 'Deploy new containers (docker compose up -d)' {
     "
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  STEP 7: Wait for the web container to be healthy
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 Invoke-Step 'Wait for web container to be ready' {
     $ready = $false
     for ($i = 0; $i -lt 30; $i++) {
@@ -157,9 +200,9 @@ Invoke-Step 'Wait for web container to be ready' {
     $global:LASTEXITCODE = 0
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  STEP 8: Run diagnostic harness inside Docker
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 Invoke-Step 'Run diagnostic harness inside Docker' {
     $diagScript = Join-Path $ProjectRoot 'scripts\diagnose_records.py'
     if (Test-Path $diagScript) {
@@ -170,9 +213,9 @@ Invoke-Step 'Run diagnostic harness inside Docker' {
     }
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  DONE
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 Write-Host ''
 Write-Host '================================================================================'
 Write-Host '  ALL STEPS COMPLETED SUCCESSFULLY' -ForegroundColor Green
