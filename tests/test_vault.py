@@ -1,7 +1,24 @@
-import io, json, time, zipfile
+import io, json, os, sys, time, zipfile
 from unittest.mock import patch
 from datetime import timedelta
-from PIL import Image
+from PIL import Image, ImageFont
+
+def _mono_font(size):
+    """Return a monospace TrueType font, trying common OS locations."""
+    candidates = [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',           # Linux (Debian/Ubuntu)
+        '/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf',    # Linux (Fedora/RHEL)
+        '/System/Library/Fonts/Menlo.ttc',                               # macOS
+    ]
+    # Windows: check common font directory
+    windir = os.environ.get('WINDIR', r'C:\Windows')
+    candidates.append(os.path.join(windir, 'Fonts', 'consola.ttf'))      # Consolas
+    candidates.append(os.path.join(windir, 'Fonts', 'cour.ttf'))         # Courier New
+    for path in candidates:
+        if os.path.isfile(path):
+            return ImageFont.truetype(path, size)
+    # Last resort: Pillow default bitmap font (no sizing support, but won't crash)
+    return ImageFont.load_default()
 import pyotp
 from cryptography.exceptions import InvalidTag
 from django.test import TestCase, SimpleTestCase, Client
@@ -142,9 +159,9 @@ class VaultTests(TestCase):
 
 class OCRSmoke(SimpleTestCase):
  def test_actual_tesseract_on_synthetic_document(self):
-  from PIL import ImageDraw,ImageFont
+  from PIL import ImageDraw
   image=Image.new('RGB',(1800,1200),'white');draw=ImageDraw.Draw(image)
-  font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',38)
+  font=_mono_font(38)
   lines=['SYNTHETIC TEST - NOT A TRAVEL DOCUMENT','Passport Number: A1234567','Full Name: TEST USER','Date of Birth: 03/04/2000','Place of Birth: TEST CITY']
   for i,line in enumerate(lines):draw.text((50,60+i*100),line,font=font,fill='black')
   buffer=io.BytesIO();image.save(buffer,format='PNG')
@@ -156,8 +173,8 @@ class WorkflowTests(TestCase):
  post = VaultTests.post
  # End-to-end API workflow with real local OCR and isolated child processes.
  def test_upload_worker_review_compare_export(self):
-  from PIL import ImageDraw,ImageFont
-  image=Image.new('RGB',(1600,1000),'white');draw=ImageDraw.Draw(image);font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',36)
+  from PIL import ImageDraw
+  image=Image.new('RGB',(1600,1000),'white');draw=ImageDraw.Draw(image);font=_mono_font(36)
   for i,line in enumerate(['SYNTHETIC TEST - NOT A PASSPORT','Passport Number: T1234567','Full Name: TEST PERSON','Date of Birth: 01/02/2000']):draw.text((50,50+i*110),line,font=font,fill='black')
   raw=io.BytesIO();image.save(raw,format='PNG')
   upload=self.client.post('/api/upload',{'files':SimpleUploadedFile('synthetic.png',raw.getvalue())});self.assertEqual(upload.status_code,201)

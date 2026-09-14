@@ -9,7 +9,7 @@ import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
 pkg = types.ModuleType('candidate_vault')
-pkg.__path__ = [str(pathlib.Path(os.environ.get('PV_TEST_ROOT',HERE.parent/'files'))/'vault')]
+pkg.__path__ = [str(pathlib.Path(os.environ.get('PV_TEST_ROOT',HERE.parent))/'vault')]
 sys.modules['candidate_vault'] = pkg
 from candidate_vault.ocr_recovery import reconcile, checked_prefix, mrz_name, printed_candidates
 from candidate_vault.fields import normalize
