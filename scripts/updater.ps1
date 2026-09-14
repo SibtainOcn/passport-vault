@@ -210,6 +210,11 @@ Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
     & wsl.exe -d Ubuntu -u root -- bash -lc "
         mkdir -p /opt/passportvault && \
         rsync -av --delete \
+            --exclude='secrets/' \
+            --exclude='db-tls/' \
+            --exclude='db-init/' \
+            --exclude='backups/' \
+            --exclude='.sites-runtime/' \
             --exclude='.git/' \
             --exclude='.venv/' \
             --exclude='__pycache__/' \
@@ -218,6 +223,7 @@ Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
             --exclude='node_modules/' \
             --exclude='.env' \
             '$wslSourcePath/' /opt/passportvault/ && \
+        chmod 700 /opt/passportvault && \
         echo '' && echo 'Files synced successfully.'
     "
 }
@@ -268,6 +274,19 @@ Invoke-Step 'Wait for web container to be ready' {
         return
     }
     Write-Host '  Web container is responding at https://localhost:8443'
+
+    # Apply any pending database migrations
+    Write-Host '  Applying database migrations...'
+    & wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python manage.py migrate --noinput'
+
+    # Ensure the background keepalive process is running (from start-windows.ps1)
+    $check = & wsl.exe -d Ubuntu -u root --exec bash -lc 'test -f /tmp/passportvault-keepalive.pid && kill -0 "$(cat /tmp/passportvault-keepalive.pid)" 2>/dev/null; echo $?'
+    $keeperRunning = (($check | Select-Object -Last 1).Trim() -eq '0')
+    if (-not $keeperRunning) {
+        $linux = 'service docker start >/dev/null 2>&1 || true; cd /opt/passportvault || exit 1; docker compose up -d || exit 1; echo $$ > /tmp/passportvault-keepalive.pid; trap "rm -f /tmp/passportvault-keepalive.pid" EXIT; exec sleep infinity'
+        Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d','Ubuntu','-u','root','--exec','bash','-lc',$linux) -WindowStyle Minimized | Out-Null
+        Write-Host '  Background WSL keepalive process initialized.'
+    }
     $global:LASTEXITCODE = 0
 }
 
