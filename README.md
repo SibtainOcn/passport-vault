@@ -73,15 +73,21 @@ Tesseract, English/OSD language data and DejaVu fonts for the synthetic tests. R
 ```sh
 python -m venv .venv
 .venv/bin/pip install -r requirements.lock
-VAULT_TESTING=1 .venv/bin/python manage.py test tests
+python run_tests.py
 cd frontend
 npm ci
 npm run build
 ```
 
-`VAULT_TESTING=1` uses known dummy keys and SQLite for tests only. Never set it on an
-installation containing real documents. Deployment Compose does not pass this flag.
-Production settings fail closed when required secret files are missing.
+Alternatively, run tests inside the Docker container:
+```sh
+docker exec -e VAULT_TESTING=1 passportvault-web-1 python manage.py test tests -v 2
+```
+
+`run_tests.py` automatically configures `VAULT_TESTING=1` and `DJANGO_SETTINGS_MODULE=app.settings`,
+setting up known dummy keys and an isolated SQLite test database with automatic lifecycle teardown.
+Never set `VAULT_TESTING=1` on an installation containing real documents. Deployment Compose does
+not pass this flag. Production settings fail closed when required secret files are missing.
 
 Frontend build inputs: `frontend/package-lock.json`. Backend versions:
 `requirements.lock`. OS packages/images are version-family/tag pinned, not digest

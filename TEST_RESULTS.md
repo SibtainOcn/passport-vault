@@ -1,11 +1,14 @@
 # Validation results
 
-Build date: 2026-09-10. Environment: Linux, Python 3.12, SQLite test database,
+Build date: 2026-09-14. Environment: Linux / Windows WSL, Python 3.12, SQLite test database,
 Tesseract installed locally. No real user passport data was used.
 
 ## Passed
 
-- 35 Django/unittest tests (7.913 seconds in the last full run).
+- 72 tests across all validation suites (100% PASS):
+  - `tests.test_recovery` (17 tests): MRZ validation, checksum checking, OCR evidence reconciliation, and tie-breaking.
+  - `tests.test_verification` (14 tests): Auto-verification quality gate, approval status routing, and master configuration.
+  - `tests.test_vault` (41 tests): Pure cryptographic routines, Vault API workflows, models, and real Tesseract smoke test.
 - Real Tesseract extraction on a synthetic text image.
 - End-to-end API: upload image -> queued worker -> isolated OCR child -> encrypted
   preview -> human approval -> CSV workbook import -> comparison -> XLSX export.
