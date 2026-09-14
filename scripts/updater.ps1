@@ -255,12 +255,17 @@ Invoke-Step 'Wait for web container to be ready' {
     Write-Host '  Applying database migrations...'
     & wsl.exe -d Ubuntu -u root -- bash -c "cd /opt/passportvault && docker compose exec -T web python manage.py migrate --noinput"
 
-    # Ensure the background keepalive process is running (from start-windows.ps1)
-    $check = & wsl.exe -d Ubuntu -u root --exec bash -c 'test -f /tmp/passportvault-keepalive.pid && kill -0 "$(cat /tmp/passportvault-keepalive.pid)" 2>/dev/null; echo $?'
-    $keeperRunning = (($check | Select-Object -Last 1).Trim() -eq '0')
+    # Ensure the background keepalive process is running (so WSL distro doesn't exit)
+    $keeperRunning = $false
+    try {
+        $pids = & wsl.exe -d Ubuntu -u root -- bash -c "pgrep -f 'sleep infinity' 2>/dev/null"
+        if ($LASTEXITCODE -eq 0 -and $pids) {
+            $keeperRunning = $true
+        }
+    } catch { }
+
     if (-not $keeperRunning) {
-        $linux = 'service docker start >/dev/null 2>&1 || true; cd /opt/passportvault || exit 1; docker compose up -d || exit 1; echo $$ > /tmp/passportvault-keepalive.pid; trap "rm -f /tmp/passportvault-keepalive.pid" EXIT; exec sleep infinity'
-        Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d','Ubuntu','-u','root','--exec','bash','-c',$linux) -WindowStyle Minimized | Out-Null
+        Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d','Ubuntu','-u','root','--exec','sleep','infinity') -WindowStyle Minimized | Out-Null
         Write-Host '  Background WSL keepalive process initialized.'
     }
     $global:LASTEXITCODE = 0
