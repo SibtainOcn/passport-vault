@@ -35,8 +35,12 @@ class VerifyTests(unittest.TestCase):
   self.assertEqual(self.verify(f,q)[1],'review')
  def test_legacy_not_found_review(self):
   self.assertEqual(self.verify(dict(FIELDS,passport_number='C3456789'))[1],'review')
- def test_mismatch_stays_review(self):
-  self.assertEqual(self.verify(dict(FIELDS,full_name='DIFFERENT USER'),QUALITY)[1],'review')
+ def test_approval_field_mismatch_failed(self):
+  # A mismatch on an approval field (gender) with confident OCR should be failed.
+  self.assertEqual(self.verify(dict(FIELDS,gender='F'),QUALITY)[1],'failed')
+ def test_nonapproval_field_mismatch_still_approved(self):
+  # full_name is not an approval field; all 5 approval fields match => approved.
+  self.assertEqual(self.verify(dict(FIELDS,full_name='DIFFERENT USER'),QUALITY)[1],'approved')
  def test_missing_field_review(self):
   self.assertEqual(self.verify(dict(FIELDS,date_of_issue=''),QUALITY)[1],'review')
  def test_missing_master_review(self):
@@ -48,5 +52,32 @@ class VerifyTests(unittest.TestCase):
   v,s=self.verify();self.assertEqual(s,'review');self.assertEqual(v['comparisons']['full_name']['excel'],'TEST PERSON')
  def test_gate_does_not_mutate_input_quality(self):
   original=copy.deepcopy(QUALITY);self.verify(quality=QUALITY);self.assertEqual(original,QUALITY)
+ # ─── Tiered threshold tests ─────────────────────────────────────────────
+ def test_5_of_5_approved(self):
+  self.assertEqual(self.verify(FIELDS,QUALITY)[1],'approved')
+ def test_4_of_5_review(self):
+  # Missing date_of_issue => 4/5 match, 0 mismatch => review
+  v,s=self.verify(dict(FIELDS,date_of_issue=''),QUALITY)
+  self.assertEqual(s,'review')
+  self.assertEqual(v['match_count'],4)
+ def test_3_of_5_review(self):
+  # Missing date_of_issue and gender => 3/5 match, 0 mismatch => review
+  v,s=self.verify(dict(FIELDS,date_of_issue='',gender=''),QUALITY)
+  self.assertEqual(s,'review')
+  self.assertEqual(v['match_count'],3)
+ def test_2_of_5_failed(self):
+  # Missing 3 fields => 2/5 match => failed
+  v,s=self.verify(dict(FIELDS,date_of_issue='',gender='',dob=''),QUALITY)
+  self.assertEqual(s,'failed')
+  self.assertEqual(v['match_count'],2)
+ def test_4_match_1_mismatch_failed(self):
+  # 4 match + 1 actual mismatch => failed (mismatch overrides)
+  v,s=self.verify(dict(FIELDS,date_of_expiry='2099-01-01'),QUALITY)
+  self.assertEqual(s,'failed')
+  self.assertGreater(v['mismatch_count'],0)
+ def test_3_match_1_mismatch_1_missing_failed(self):
+  v,s=self.verify(dict(FIELDS,date_of_issue='',gender='F'),QUALITY)
+  self.assertEqual(s,'failed')
 
 if __name__=='__main__':unittest.main(verbosity=2)
+

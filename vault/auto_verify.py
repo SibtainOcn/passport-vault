@@ -76,7 +76,6 @@ def _compare_document(owner, extracted_fields):
 
     row_num, raw = candidates[0]
     comparisons={}
-    needs_review=False
     mismatches=[]
     for field, excel_value in raw.items():
         passport_value=extracted_fields.get(field,'')
@@ -84,25 +83,37 @@ def _compare_document(owner, extracted_fields):
         try:
             expected=normalize(field, excel_value, date_format)
         except ValueError:
-            item['status']='Invalid Excel value'; needs_review=True; comparisons[field]=item; continue
+            item['status']='Invalid Excel value'; comparisons[field]=item; continue
         try:
             actual=normalize(field, passport_value, 'DMY') if passport_value else ''
         except ValueError:
             actual=''
         if not expected or not actual:
-            item['status']='Missing value'; needs_review=True
+            item['status']='Missing value'
         elif expected == actual:
             item['status']='Match'
         else:
-            item['status']='Mismatch'; needs_review=True; mismatches.append(field)
+            item['status']='Mismatch'; mismatches.append(field)
         comparisons[field]=item
 
-    if needs_review:
-        reason = ('Fields differ: '+', '.join(mismatches)) if mismatches else 'One or more compared fields are missing or invalid.'
-        state='review'; label='review'
-    else:
+    # Tiered decision based on the 5 mandatory approval fields.
+    match_count = sum(1 for f in approval_fields if comparisons.get(f,{}).get('status')=='Match')
+    mismatch_count = sum(1 for f in approval_fields if comparisons.get(f,{}).get('status')=='Mismatch')
+    total = len(approval_fields)
+
+    if match_count == total:
         reason='All selected Master Excel fields match the passport OCR data.'
         state='approved'; label='approved'
+    elif match_count >= 3 and mismatch_count == 0:
+        missing_names = sorted(f for f in approval_fields if comparisons.get(f,{}).get('status') in ('Missing value','Invalid Excel value'))
+        reason=f'{match_count}/{total} approval fields match. Missing OCR data: {", ".join(missing_names)}.'
+        state='review'; label='review'
+    else:
+        if mismatches:
+            reason=f'Fields differ: {", ".join(mismatches)}. Only {match_count}/{total} approval fields match.'
+        else:
+            reason=f'Only {match_count}/{total} approval fields could be verified.'
+        state='failed'; label='failed'
     return {
         'status':label,
         'reason':reason,
@@ -110,6 +121,8 @@ def _compare_document(owner, extracted_fields):
         'sheet':sheet_name,
         'row':row_num,
         'comparisons':comparisons,
+        'match_count':match_count,
+        'mismatch_count':mismatch_count,
         'master':str(master.id),
         'master_name':master.name,
     }, state
