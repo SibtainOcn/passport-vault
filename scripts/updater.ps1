@@ -207,48 +207,24 @@ Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
     Write-Host "  Destination        : /opt/passportvault"
     Write-Host ''
 
-    & wsl.exe -d Ubuntu -u root -- bash -lc "
-        mkdir -p /opt/passportvault && \
-        rsync -av --delete \
-            --exclude='secrets/' \
-            --exclude='db-tls/' \
-            --exclude='db-init/' \
-            --exclude='backups/' \
-            --exclude='.sites-runtime/' \
-            --exclude='.git/' \
-            --exclude='.venv/' \
-            --exclude='__pycache__/' \
-            --exclude='*.pyc' \
-            --exclude='*.sqlite3' \
-            --exclude='node_modules/' \
-            --exclude='.env' \
-            '$wslSourcePath/' /opt/passportvault/ && \
-        chmod 700 /opt/passportvault && \
-        echo '' && echo 'Files synced successfully.'
-    "
+    $rsyncCmd = "mkdir -p /opt/passportvault && rsync -av --delete --exclude='secrets/' --exclude='db-tls/' --exclude='db-init/' --exclude='backups/' --exclude='.sites-runtime/' --exclude='.git/' --exclude='.venv/' --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.sqlite3' --exclude='node_modules/' --exclude='.env' '$wslSourcePath/' /opt/passportvault/ && chmod 700 /opt/passportvault && echo 'Files synced successfully.'"
+    & wsl.exe -d Ubuntu -u root -- bash -c $rsyncCmd
 }
 
 # ==============================================================================
 #  STEP 4: Fix line endings inside WSL (CRLF -> LF)
 # ==============================================================================
 Invoke-Step 'Fix CRLF line endings in WSL' {
-    & wsl.exe -d Ubuntu -u root -- bash -lc "
-        cd /opt/passportvault && \
-        find . -name '*.py' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml' -o -name '*.cfg' -o -name '*.txt' -o -name '*.md' -o -name 'Dockerfile' -o -name 'Caddyfile' -o -name '*.lock' | \
-        xargs -r sed -i 's/\r$//' 2>/dev/null && \
-        echo 'Line endings fixed.'
-    "
+    $fixCrlfCmd = "cd /opt/passportvault && find . -type f \( -name '*.py' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml' -o -name '*.cfg' -o -name '*.txt' -o -name '*.md' -o -name 'Dockerfile' -o -name 'Caddyfile' -o -name '*.lock' \) -exec sed -i 's/\r$//' {} + && echo 'Line endings fixed.'"
+    & wsl.exe -d Ubuntu -u root -- bash -c $fixCrlfCmd
 }
 
 # ==============================================================================
 #  STEP 5: Rebuild Docker containers and restart (IMG 2 - Step 3)
 # ==============================================================================
 Invoke-Step 'Rebuild Docker containers and restart' {
-    & wsl.exe -d Ubuntu -u root -- bash -lc "
-        cd /opt/passportvault && \
-        docker compose build web worker && \
-        docker compose up -d --force-recreate
-    "
+    $rebuildCmd = "cd /opt/passportvault && docker compose build web worker && docker compose up -d --force-recreate"
+    & wsl.exe -d Ubuntu -u root -- bash -c $rebuildCmd
 }
 
 # ==============================================================================
@@ -269,7 +245,7 @@ Invoke-Step 'Wait for web container to be ready' {
     }
     if (-not $ready) {
         Write-Host '  ERROR: Web container did not become ready within 60 seconds.' -ForegroundColor Red
-        & wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose logs --tail=30 web'
+        & wsl.exe -d Ubuntu -u root -- bash -c "cd /opt/passportvault && docker compose logs --tail=30 web"
         $global:LASTEXITCODE = 1
         return
     }
@@ -277,14 +253,14 @@ Invoke-Step 'Wait for web container to be ready' {
 
     # Apply any pending database migrations
     Write-Host '  Applying database migrations...'
-    & wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python manage.py migrate --noinput'
+    & wsl.exe -d Ubuntu -u root -- bash -c "cd /opt/passportvault && docker compose exec -T web python manage.py migrate --noinput"
 
     # Ensure the background keepalive process is running (from start-windows.ps1)
-    $check = & wsl.exe -d Ubuntu -u root --exec bash -lc 'test -f /tmp/passportvault-keepalive.pid && kill -0 "$(cat /tmp/passportvault-keepalive.pid)" 2>/dev/null; echo $?'
+    $check = & wsl.exe -d Ubuntu -u root --exec bash -c 'test -f /tmp/passportvault-keepalive.pid && kill -0 "$(cat /tmp/passportvault-keepalive.pid)" 2>/dev/null; echo $?'
     $keeperRunning = (($check | Select-Object -Last 1).Trim() -eq '0')
     if (-not $keeperRunning) {
         $linux = 'service docker start >/dev/null 2>&1 || true; cd /opt/passportvault || exit 1; docker compose up -d || exit 1; echo $$ > /tmp/passportvault-keepalive.pid; trap "rm -f /tmp/passportvault-keepalive.pid" EXIT; exec sleep infinity'
-        Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d','Ubuntu','-u','root','--exec','bash','-lc',$linux) -WindowStyle Minimized | Out-Null
+        Start-Process -FilePath 'wsl.exe' -ArgumentList @('-d','Ubuntu','-u','root','--exec','bash','-c',$linux) -WindowStyle Minimized | Out-Null
         Write-Host '  Background WSL keepalive process initialized.'
     }
     $global:LASTEXITCODE = 0
@@ -294,33 +270,21 @@ Invoke-Step 'Wait for web container to be ready' {
 #  STEP 7: Re-verify existing documents with new logic (IMG 2 - Step 4)
 # ==============================================================================
 Invoke-Step 'Re-verify existing documents with new tiered logic' {
-    $reverifyScript = Join-Path $ProjectRoot 'scripts\reverify_all.py'
-    if (Test-Path $reverifyScript) {
-        Get-Content $reverifyScript -Raw | wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python -'
-    } else {
-        Write-Host '  SKIP: reverify_all.py not found.' -ForegroundColor Yellow
-        $global:LASTEXITCODE = 0
-    }
+    & wsl.exe -d Ubuntu -u root -- bash -c "cd /opt/passportvault && docker compose exec -T web python scripts/reverify_all.py"
 }
 
 # ==============================================================================
 #  STEP 8: Run diagnostic harness inside Docker (IMG 3 - Step 5)
 # ==============================================================================
 Invoke-Step 'Run diagnostic harness inside Docker' {
-    $diagScript = Join-Path $ProjectRoot 'scripts\diagnose_records.py'
-    if (Test-Path $diagScript) {
-        Get-Content $diagScript -Raw | wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python -'
-    } else {
-        Write-Host '  SKIP: diagnose_records.py not found.' -ForegroundColor Yellow
-        $global:LASTEXITCODE = 0
-    }
+    & wsl.exe -d Ubuntu -u root -- bash -c "cd /opt/passportvault && docker compose exec -T web python scripts/diagnose_records.py"
 }
 
 # ==============================================================================
 #  STEP 9: Run unit tests inside Docker container (full verification)
 # ==============================================================================
 Invoke-Step 'Run unit tests inside Docker container' {
-    & wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python run_tests.py'
+    & wsl.exe -d Ubuntu -u root -- bash -c "cd /opt/passportvault && docker compose exec -T web python run_tests.py"
 }
 
 # ==============================================================================
