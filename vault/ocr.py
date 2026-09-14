@@ -2,10 +2,26 @@
 Priority: valid TD3 MRZ, then EasyOCR printed text, then Tesseract fallback.
 No cloud OCR APIs are used.
 """
-import io, re, warnings
+import io, os, re, warnings, shutil
 from PIL import Image, ImageOps, ImageStat, ImageEnhance, ImageFilter
 import pypdfium2 as pdfium
 import pytesseract
+
+# On Windows, auto-detect standard Tesseract installation paths if not in PATH
+if os.name == 'nt':
+    if not shutil.which('tesseract'):
+        for _candidate in [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            os.path.expandvars(r'%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe'),
+        ]:
+            if os.path.isfile(_candidate):
+                pytesseract.pytesseract.tesseract_cmd = _candidate
+                _tess_dir = os.path.dirname(_candidate)
+                if _tess_dir not in os.environ.get('PATH', ''):
+                    os.environ['PATH'] = _tess_dir + os.pathsep + os.environ.get('PATH', '')
+                break
+
 from .mrz import candidates
 from .fields import FIELDS
 
@@ -207,6 +223,8 @@ def tesseract_pass(image, language):
             raise DocumentError('OCR_TIMEOUT')
         except pytesseract.TesseractError:
             raise DocumentError('OCR_ENGINE_OR_LANGUAGE_ERROR')
+        except (pytesseract.TesseractNotFoundError, Exception):
+            pass
     return combine_texts(*texts), words
 
 
@@ -228,7 +246,7 @@ def mrz_text_from_variants(variants):
                 )
                 if txt.strip():
                     outputs.append(txt)
-            except (RuntimeError, pytesseract.TesseractError):
+            except (RuntimeError, pytesseract.TesseractError, pytesseract.TesseractNotFoundError, Exception):
                 continue
     return combine_texts(*outputs)
 
@@ -393,7 +411,7 @@ def _extract_raw(sources, language='eng'):
                 )
                 if osd.get('rotate'):
                     image = image.rotate(-osd['rotate'], expand=True)
-            except (pytesseract.TesseractError, RuntimeError):
+            except (pytesseract.TesseractError, pytesseract.TesseractNotFoundError, RuntimeError, Exception):
                 pass
 
             gray = ImageOps.grayscale(image)

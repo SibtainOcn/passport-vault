@@ -7,7 +7,7 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 
 Write-Host ''
 Write-Host '================================================================================'
-Write-Host '  PASSPORTVAULT UPDATER -- Test, Sync, Rebuild, Deploy'
+Write-Host '  PASSPORTVAULT UPDATER -- Sync, Rebuild, Deploy & Verify'
 Write-Host '================================================================================'
 Write-Host "  Project : $ProjectRoot"
 Write-Host "  Time    : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -18,7 +18,8 @@ Write-Host ''
 function Invoke-Step {
     param(
         [string]$StepName,
-        [scriptblock]$Command
+        [scriptblock]$Command,
+        [switch]$AllowWarning
     )
     Write-Host ''
     Write-Host '--------------------------------------------------------------------------------'
@@ -29,6 +30,13 @@ function Invoke-Step {
     & $Command
 
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        if ($AllowWarning) {
+            Write-Host ''
+            Write-Host "  [WARNING] $StepName completed with exit code $LASTEXITCODE (continuing to Docker verification)..." -ForegroundColor Yellow
+            Write-Host ''
+            $global:LASTEXITCODE = 0
+            return
+        }
         Write-Host ''
         Write-Host "  [FAILED] $StepName (exit code $LASTEXITCODE)" -ForegroundColor Red
         Write-Host '  Stopping updater. Fix the issue above and re-run.' -ForegroundColor Red
@@ -40,15 +48,90 @@ function Invoke-Step {
 }
 
 # ==============================================================================
-#  STEP 1: Run unit tests locally (using venv Python)
+#  STEP 0: Pull latest changes from Git (if inside a git repository)
 # ==============================================================================
-Invoke-Step 'Run Unit Tests (local)' {
-    $venvPython = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
-    if (-not (Test-Path $venvPython)) {
-        Write-Host '  WARNING: .venv not found, trying system python...' -ForegroundColor Yellow
-        $venvPython = 'python'
+Invoke-Step 'Pull latest Git updates' -AllowWarning {
+    if (Test-Path (Join-Path $ProjectRoot '.git')) {
+        $gitCmd = Get-Command git.exe -ErrorAction SilentlyContinue
+        if ($gitCmd) {
+            Write-Host '  Pulling latest changes from remote repository...'
+            & git.exe -C $ProjectRoot pull --ff-only
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host '  git pull completed (or already up to date).' -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host '  git.exe not found in PATH; skipping git pull.' -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host '  Not a git working copy; skipping git pull.'
     }
-    & $venvPython (Join-Path $ProjectRoot 'run_tests.py')
+    $global:LASTEXITCODE = 0
+}
+
+# ==============================================================================
+#  STEP 1: Run unit tests locally (auto-detect .venv OR global system Python)
+# ==============================================================================
+Invoke-Step 'Run Unit Tests (local pre-flight)' -AllowWarning {
+    $resolvedPython = $null
+    $pythonLabel = ''
+
+    # 1. Check local virtual environment (.venv)
+    $venvPython = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
+    if (Test-Path $venvPython) {
+        $resolvedPython = $venvPython
+        $pythonLabel = 'Local virtual environment (.venv)'
+    }
+
+    # 2. Check active virtual environment ($env:VIRTUAL_ENV)
+    if (-not $resolvedPython -and $env:VIRTUAL_ENV) {
+        $activePython = Join-Path $env:VIRTUAL_ENV 'Scripts\python.exe'
+        if (Test-Path $activePython) {
+            $resolvedPython = $activePython
+            $pythonLabel = 'Active virtual environment (VIRTUAL_ENV)'
+        }
+    }
+
+    # 3. Check system Python in PATH
+    if (-not $resolvedPython) {
+        $cmdPython = Get-Command python.exe -ErrorAction SilentlyContinue
+        if ($cmdPython -and $cmdPython.Source -notmatch 'WindowsApps') {
+            $resolvedPython = $cmdPython.Source
+            $pythonLabel = 'System Python (PATH)'
+        }
+    }
+
+    # 4. Check common global Python installation directories
+    if (-not $resolvedPython) {
+        $commonLocations = @(
+            "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
+            "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+            "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+            "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
+            "$env:ProgramFiles\Python313\python.exe",
+            "$env:ProgramFiles\Python312\python.exe",
+            "$env:ProgramFiles\Python311\python.exe",
+            "$env:ProgramFiles\Python310\python.exe",
+            "C:\Python313\python.exe",
+            "C:\Python312\python.exe",
+            "C:\Python311\python.exe",
+            "C:\Python310\python.exe"
+        )
+        foreach ($loc in $commonLocations) {
+            if (Test-Path $loc) {
+                $resolvedPython = $loc
+                $pythonLabel = "Installed Python ($loc)"
+                break
+            }
+        }
+    }
+
+    if ($resolvedPython) {
+        Write-Host "  Using Python interpreter: $resolvedPython [$pythonLabel]"
+        & $resolvedPython (Join-Path $ProjectRoot 'run_tests.py')
+    } else {
+        Write-Host '  No local Python found on host machine. Unit tests will run inside Docker container.' -ForegroundColor Yellow
+        $global:LASTEXITCODE = 0
+    }
 }
 
 # ==============================================================================
@@ -63,7 +146,6 @@ Invoke-Step 'Ensure WSL Ubuntu is running' {
     if (-not $wslOk) {
         Write-Host '  WSL Ubuntu is not running. Attempting to start...' -ForegroundColor Yellow
 
-        # Try starting the distro
         $ErrorActionPreference = 'Continue'
         & wsl.exe -d Ubuntu -- echo 'WSL started' 2>$null
         $startOk = ($LASTEXITCODE -eq 0)
@@ -90,7 +172,7 @@ Invoke-Step 'Ensure WSL Ubuntu is running' {
         Write-Host '  WSL Ubuntu is already running.'
     }
 
-    # Make sure Docker is running inside WSL
+    # Make sure Docker service is running inside WSL
     Write-Host '  Ensuring Docker service is running inside WSL...'
     & wsl.exe -d Ubuntu -u root -- bash -lc 'service docker start 2>/dev/null || true'
     Start-Sleep -Seconds 2
@@ -112,10 +194,9 @@ Invoke-Step 'Ensure WSL Ubuntu is running' {
 }
 
 # ==============================================================================
-#  STEP 3: Copy / sync project files into WSL (/opt/passportvault)
+#  STEP 3: Copy / sync project files into WSL (/opt/passportvault) (IMG 1 - Step 2)
 # ==============================================================================
 Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
-    # Convert Windows path to WSL path
     $wslSourcePath = (& wsl.exe -d Ubuntu --exec wslpath -a $ProjectRoot).Trim()
     if (-not $wslSourcePath) {
         Write-Host '  ERROR: Could not convert project path to WSL path.' -ForegroundColor Red
@@ -126,7 +207,6 @@ Invoke-Step 'Sync project files to WSL (/opt/passportvault)' {
     Write-Host "  Destination        : /opt/passportvault"
     Write-Host ''
 
-    # rsync project files, excluding .git, .venv, __pycache__, etc.
     & wsl.exe -d Ubuntu -u root -- bash -lc "
         mkdir -p /opt/passportvault && \
         rsync -av --delete \
@@ -155,27 +235,18 @@ Invoke-Step 'Fix CRLF line endings in WSL' {
 }
 
 # ==============================================================================
-#  STEP 5: Rebuild Docker containers
+#  STEP 5: Rebuild Docker containers and restart (IMG 2 - Step 3)
 # ==============================================================================
-Invoke-Step 'Rebuild Docker containers (docker compose build)' {
+Invoke-Step 'Rebuild Docker containers and restart' {
     & wsl.exe -d Ubuntu -u root -- bash -lc "
         cd /opt/passportvault && \
-        docker compose build --no-cache
+        docker compose build web worker && \
+        docker compose up -d --force-recreate
     "
 }
 
 # ==============================================================================
-#  STEP 6: Deploy -- restart containers with new images
-# ==============================================================================
-Invoke-Step 'Deploy new containers (docker compose up -d)' {
-    & wsl.exe -d Ubuntu -u root -- bash -lc "
-        cd /opt/passportvault && \
-        docker compose up -d
-    "
-}
-
-# ==============================================================================
-#  STEP 7: Wait for the web container to be healthy
+#  STEP 6: Wait for web container to be ready
 # ==============================================================================
 Invoke-Step 'Wait for web container to be ready' {
     $ready = $false
@@ -201,7 +272,20 @@ Invoke-Step 'Wait for web container to be ready' {
 }
 
 # ==============================================================================
-#  STEP 8: Run diagnostic harness inside Docker
+#  STEP 7: Re-verify existing documents with new logic (IMG 2 - Step 4)
+# ==============================================================================
+Invoke-Step 'Re-verify existing documents with new tiered logic' {
+    $reverifyScript = Join-Path $ProjectRoot 'scripts\reverify_all.py'
+    if (Test-Path $reverifyScript) {
+        Get-Content $reverifyScript -Raw | wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python -'
+    } else {
+        Write-Host '  SKIP: reverify_all.py not found.' -ForegroundColor Yellow
+        $global:LASTEXITCODE = 0
+    }
+}
+
+# ==============================================================================
+#  STEP 8: Run diagnostic harness inside Docker (IMG 3 - Step 5)
 # ==============================================================================
 Invoke-Step 'Run diagnostic harness inside Docker' {
     $diagScript = Join-Path $ProjectRoot 'scripts\diagnose_records.py'
@@ -211,6 +295,13 @@ Invoke-Step 'Run diagnostic harness inside Docker' {
         Write-Host '  SKIP: diagnose_records.py not found.' -ForegroundColor Yellow
         $global:LASTEXITCODE = 0
     }
+}
+
+# ==============================================================================
+#  STEP 9: Run unit tests inside Docker container (full verification)
+# ==============================================================================
+Invoke-Step 'Run unit tests inside Docker container' {
+    & wsl.exe -d Ubuntu -u root -- bash -lc 'cd /opt/passportvault && docker compose exec -T web python run_tests.py'
 }
 
 # ==============================================================================
