@@ -166,7 +166,7 @@ MASTER = types.SimpleNamespace(
 
 def sim(fields, master=MASTER):
     with patch('vault.auto_verify._active_master', return_value=master):
-        with patch('vault.crypto.unpack', side_effect=lambda data, aad: data):
+        with patch('vault.auto_verify.unpack', side_effect=lambda data, aad: data):
             return _compare_document(None, fields)
 
 tests = [
